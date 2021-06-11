@@ -10,7 +10,6 @@
 
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
-from orto
 
 def create_data_model():
     """Stores the data for the problem."""

@@ -12,7 +12,10 @@ users = read.csv('users.csv', sep = ";")
 users
 
 # Driving times matrix
-dtm = osrmTable(src = taxis[,c("key","latitude", "longitude")], dst =  users[,c("key","latitude_p", "longitude_p")])$durations
+dtm = osrmTable(rbind(users[,c("key","latitude_p", "longitude_p")] %>% 
+                              rename(id=1,latitude=2,longitude=3), 
+                            users[,c("key","latitude_d", "longitude_d")] %>% 
+                              rename(id=1,latitude=2,longitude=3)))$durations
 
 #### FIRST MODEL : no capacity constraints ####
 
