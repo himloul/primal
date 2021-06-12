@@ -5,6 +5,9 @@ from ortools.constraint_solver import pywrapcp
 import geopandas
 import osrm
 import numpy as np
+import gmplot
+import webbrowser
+import gmaps
 
 # Data preparation
 taxis = pd.read_csv('taxis.csv', sep = ";")
@@ -34,8 +37,6 @@ def create_data_model():
     data['pickups_deliveries'] = pd_list
     data['depot'] = 0
     return data
-    
-  
 
 #### Model ####
 
@@ -154,5 +155,67 @@ def main():
 
 
 if __name__ == '__main__':
-    sol = main()
+    sol = main() 
     sol
+
+# List of routing to dataframe
+dst_df = pd.DataFrame({'loc': depot+dst})
+dst_df["id"] = dst_df.index
+
+def dfroute(i):
+  """From list to dataframe"""
+  # TODO: write code...
+  df = pd.DataFrame({'id': sol[i][0]})
+  df['tx'] = i
+  df["step"] = df.index+1
+  routing_df = pd.merge(df,dst_df,on='id',how='left')
+  routing_df[['lon','lat']] = pd.DataFrame(routing_df['loc'].tolist(), index= routing_df.index)
+  return(routing_df)
+
+dfroute(1)
+
+# merge dataframes into one.
+appended_data = []
+for i in range(0,len(sol)):
+  appended_data.append(dfroute(i))
+
+appended_data = pd.concat(appended_data)
+
+#### Plot ####
+# ----------------------------------------------------
+# key of API
+key = 'AIzaSyA2KJIwDsDNnjBOzQUdqn_6TVyE2DHbscM'
+gmaps.configure(api_key=key)
+
+gmap = gmplot.GoogleMapPlotter(35.911079, 14.405030, 11, apikey=key)
+
+# region Define malta area for display purposes
+malta_region = zip(*[
+    (35.803328, 14.554822),
+    (35.800475, 14.496695),
+    (35.825082, 14.398712),
+    (35.868734, 14.326598),
+    (35.973936, 14.290459),
+    (36.004854, 14.266097),
+    (36.030803, 14.177367),
+    (36.087915, 14.176825),
+    (36.096223, 14.259044),
+    (36.054412, 14.353785),
+    (35.882201, 14.593547),
+    (35.828978, 14.586117)
+])
+gmap.polygon(*malta_region, face_color='skyblue', edge_color='royalblue', edge_width=4)
+
+# Draw map
+gmap.draw( "map.html" ) 
+# Open map in a browser
+webbrowser.open_new_tab("map.html")
+
+
+list_coord = [tuple(l) for l in [t[::-1] for t in depot+dst]] # list of tuples of coordinates (lat, lon) in a list
+fig = gmaps.figure()
+markers = gmaps.marker_layer(list_coord)
+fig.add_layer(markers)
+fig
+from ipywidgets.embed import embed_minimal_html
+embed_minimal_html('export.html', views=[fig])

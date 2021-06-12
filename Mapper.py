@@ -14,6 +14,7 @@ def get_duration(start_str, end_str, key):
 
     return int(duration.replace(' mins', ''))
 
+# Shortest direction form start to end
 def get_shortest(start_str, end_list, key):
     durat = 10000000000
     for end_str in end_list:
