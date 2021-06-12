@@ -8,8 +8,10 @@ import numpy as np
 import gmplot
 import webbrowser
 import gmaps
+import googlemaps
+from Mapper import get_shortest, get_duration, get_possible
 
-# Data preparation
+
 taxis = pd.read_csv('taxis.csv', sep = ";")
 users = pd.read_csv('users_cal.csv', sep = ";")
 depot = [[-9.575533, 30.416634]]
@@ -36,6 +38,8 @@ def create_data_model():
     data['num_vehicles'] = 2 #len(taxis.index)
     data['pickups_deliveries'] = pd_list
     data['depot'] = 0
+    data['demands'] = [0, 0, 0, 0, 0, 0, 1, 1, 2, 1, 3]
+    data['vehicle_capacities'] = [4, 4]
     return data
 
 #### Model ####
@@ -44,20 +48,25 @@ def print_solution(data, manager, routing, solution):
     """Prints solution on console."""
     print(f'Objective: {solution.ObjectiveValue()}')
     total_distance = 0
+    total_load = 0
     for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
         plan_output = 'Route for vehicle {}:\n'.format(vehicle_id)
         route_distance = 0
+        route_load = 0
+        
         while not routing.IsEnd(index):
+            node_index = manager.IndexToNode(index)
             plan_output += ' {} -> '.format(manager.IndexToNode(index))
             previous_index = index
             index = solution.Value(routing.NextVar(index))
-            route_distance += routing.GetArcCostForVehicle(
-                previous_index, index, vehicle_id)
+            route_load += data['demands'][node_index]
+            route_distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
         plan_output += '{}\n'.format(manager.IndexToNode(index))
         plan_output += 'Distance of the route: {}m\n'.format(route_distance)
         print(plan_output)
         total_distance += route_distance
+        total_load += route_load
     print('Total Distance of all routes: {}m'.format(total_distance))
 
 #### Save routes to a list or array ####
@@ -71,12 +80,15 @@ def get_routes(solution, routing, manager):
     index = routing.Start(route_nbr)
     route = [manager.IndexToNode(index)]
     route_distance = 0
+    route_load = 0
+    
     while not routing.IsEnd(index):
       previous_index = index
       index = solution.Value(routing.NextVar(index))
       route.append(manager.IndexToNode(index))
       route_distance += routing.GetArcCostForVehicle(previous_index, index, route_nbr)
-    routes.append([route, route_distance])
+      route_load += data['demands'][route_nbr]
+    routes.append([route, route_distance, route_load])
     # ([[routing_0], distance_0], [[routing_1], distance_1], [[routing_2], distance_2])
     
     
@@ -106,7 +118,24 @@ def main():
 
     transit_callback_index = routing.RegisterTransitCallback(distance_callback)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+    
+    # -------------------------------------------------------
+        # Add Capacity constraint.
+    def demand_callback(from_index):
+        """Returns the demand of the node."""
+        # Convert from routing variable Index to demands NodeIndex.
+        from_node = manager.IndexToNode(from_index)
+        return data['demands'][from_node]
 
+    demand_callback_index = routing.RegisterUnaryTransitCallback(
+        demand_callback)
+    routing.AddDimensionWithVehicleCapacity(
+        demand_callback_index,
+        0,  # null capacity slack
+        data['vehicle_capacities'],  # vehicle maximum capacities
+        True,  # start cumul to zero
+        'Capacity')
+    # -------------------------------------------------------
     # Add Distance constraint.
     dimension_name = 'Distance'
     routing.AddDimension(
@@ -117,7 +146,8 @@ def main():
         dimension_name)
     distance_dimension = routing.GetDimensionOrDie(dimension_name)
     distance_dimension.SetGlobalSpanCostCoefficient(100)
-
+    # -------------------------------------------------------
+    
     # Define Transportation Requests.
     for request in data['pickups_deliveries']:
         pickup_index = manager.NodeToIndex(request[0])
@@ -158,21 +188,21 @@ if __name__ == '__main__':
     sol = main() 
     sol
 
-# List of routing to dataframe
-dst_df = pd.DataFrame({'loc': depot+dst})
-dst_df["id"] = dst_df.index
-
-def dfroute(i):
-  """From list to dataframe"""
-  # TODO: write code...
-  df = pd.DataFrame({'id': sol[i][0]})
-  df['tx'] = i
-  df["step"] = df.index+1
-  routing_df = pd.merge(df,dst_df,on='id',how='left')
-  routing_df[['lon','lat']] = pd.DataFrame(routing_df['loc'].tolist(), index= routing_df.index)
-  return(routing_df)
-
-dfroute(1)
+# # List of routing to dataframe
+# dst_df = pd.DataFrame({'loc': depot+dst})
+# dst_df["id"] = dst_df.index
+# 
+# def dfroute(i):
+#   """From list to dataframe"""
+#   # TODO: write code...
+#   df = pd.DataFrame({'id': sol[i][0]})
+#   df['tx'] = i
+#   df["step"] = df.index+1
+#   routing_df = pd.merge(df,dst_df,on='id',how='left')
+#   routing_df[['lon','lat']] = pd.DataFrame(routing_df['loc'].tolist(), index= routing_df.index)
+#   return(routing_df)
+# 
+# dfroute(1)
 
 # merge dataframes into one.
 appended_data = []
@@ -181,13 +211,20 @@ for i in range(0,len(sol)):
 
 appended_data = pd.concat(appended_data)
 
+path = 0 # access first route
+solut[:] = sol[path][0]
+
+for i in range(len(solut)):
+  solut[i] = list_coord[solut[i]]
+
 #### Plot ####
 # ----------------------------------------------------
 # key of API
 key = 'AIzaSyA2KJIwDsDNnjBOzQUdqn_6TVyE2DHbscM'
 gmaps.configure(api_key=key)
+gmaps = googlemaps.Client(key=key)
 
-gmap = gmplot.GoogleMapPlotter(35.911079, 14.405030, 11, apikey=key)
+gmap = gmplot.GoogleMapPlotter(30.416634, -9.575533, 11, apikey=key)
 
 # region Define malta area for display purposes
 malta_region = zip(*[
@@ -211,11 +248,13 @@ gmap.draw( "map.html" )
 # Open map in a browser
 webbrowser.open_new_tab("map.html")
 
+list_coord = [tuple(l) for l in [t[::-1] for t in dst]] # list of tuples of coordinates (lat, lon) in a list
 
-list_coord = [tuple(l) for l in [t[::-1] for t in depot+dst]] # list of tuples of coordinates (lat, lon) in a list
-fig = gmaps.figure()
-markers = gmaps.marker_layer(list_coord)
-fig.add_layer(markers)
-fig
-from ipywidgets.embed import embed_minimal_html
-embed_minimal_html('export.html', views=[fig])
+# ----------------------------
+
+import gmplot
+gmap = gmplot.GoogleMapPlotter(30.416634, -9.575533, 11, apikey=key)
+gmap.directions(solut[0],solut[len(solut)-2], waypoints = solut[1:(len(solut)-3)])
+
+gmap.draw('map2.html')
+webbrowser.open_new_tab('map2.html')

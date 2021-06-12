@@ -113,11 +113,7 @@ while len(user_dict) != 0:
             else:
                 next = passengers.get_start()
 
-gmap.directions(
-    start_location,
-    waypoints[-1],
-    waypoints=waypoints[:-1]
-)
+gmap.directions(start_location, waypoints[-1], waypoints=waypoints[:-1])
 
 gmap.draw('map.html')
 
