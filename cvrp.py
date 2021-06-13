@@ -17,12 +17,13 @@ from Mapper import get_shortest, get_duration, get_possible
 # DATA PREPARATION ------------------
 
 taxis = pd.read_csv('taxis.csv', sep = ";")
-users = pd.read_csv('users_cal.csv', sep = ";")
-depot = [[-9.575533, 30.416634]]
+users = pd.read_csv('users.csv', sep = ";")
+depot = [[14.486100,35.854938]]
+users = users.round({'longitude_p': 6, 'latitude_p': 6, 'longitude_d': 6, 'latitude_d': 6})
 
 # list of pickups and deliveries coordinates
 src = taxis[['longitude', 'latitude']].values.tolist()
-dst = depot + users[['longitude_p', 'latitude_p']].values.tolist() + users[['longitude_p', 'latitude_p']].values.tolist()
+dst = depot + users[['longitude_p', 'latitude_p']].values.tolist() + users[['longitude_d', 'latitude_d']].values.tolist()
 
 # list of pickup - delivery
 pd_list = []
@@ -32,6 +33,7 @@ for i in range(1,len(users['key'])+1,1):
 # list of demands
 d_list = users["number_people"].values.tolist()
 demands = [0] + d_list + [i * -1 for i in d_list]
+matrix = osrm.table(dst, output='np')[0].tolist()
 
 
 # Configure OSRM server
@@ -42,10 +44,10 @@ osrm.RequestConfig.host = "http://router.project-osrm.org" # this sets the new u
 def create_data_model():
     """Stores the data for the problem."""
     data = {}
-    data['distance_matrix'] = osrm.table(dst, output='np')[0].tolist()
+    data['distance_matrix'] = matrix
     data['demands'] = demands
-    data['vehicle_capacities'] = [15, 15]
-    data['num_vehicles'] = 2
+    data['vehicle_capacities'] = [4, 4, 4]
+    data['num_vehicles'] = 3
     data['depot'] = 0
     return data
 
@@ -78,6 +80,29 @@ def print_solution(data, manager, routing, solution):
     print('Total distance of all routes: {}m'.format(total_distance))
     print('Total load of all routes: {}'.format(total_load))
 
+#### Save routes to a list or array ####
+
+def get_routes(solution, routing, manager):
+  """Get vehicle routes from a solution and store them in an array."""
+  # Get vehicle routes and store them in a two dimensional array whose
+  # i,j entry is the jth location visited by vehicle i along its route.
+  routes = []
+  for route_nbr in range(routing.vehicles()):
+    index = routing.Start(route_nbr)
+    route = [manager.IndexToNode(index)]
+    route_distance = 0
+    # route_load = 0
+    
+    while not routing.IsEnd(index):
+      previous_index = index
+      index = solution.Value(routing.NextVar(index))
+      route.append(manager.IndexToNode(index))
+      route_distance += routing.GetArcCostForVehicle(previous_index, index, route_nbr)
+      # route_load += data['demands'][route_nbr]
+    routes.append([route, route_distance]) # , route_load
+    # ([[routing_0], distance_0], [[routing_1], distance_1], [[routing_2], distance_2])
+    
+  return routes
 
 def main():
     """Solve the CVRP problem."""
@@ -85,8 +110,7 @@ def main():
     data = create_data_model()
 
     # Create the routing index manager.
-    manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']),
-                                           data['num_vehicles'], data['depot'])
+    manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
 
     # Create Routing Model.
     routing = pywrapcp.RoutingModel(manager)
@@ -105,7 +129,6 @@ def main():
     # Define cost of each arc.
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
-
     # Add Capacity constraint.
     def demand_callback(from_index):
         """Returns the demand of the node."""
@@ -113,8 +136,7 @@ def main():
         from_node = manager.IndexToNode(from_index)
         return data['demands'][from_node]
 
-    demand_callback_index = routing.RegisterUnaryTransitCallback(
-        demand_callback)
+    demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
     routing.AddDimensionWithVehicleCapacity(
         demand_callback_index,
         0,  # null capacity slack
@@ -132,14 +154,67 @@ def main():
 
     # Solve the problem.
     solution = routing.SolveWithParameters(search_parameters)
+    
+    # Get the routes
+    routes = get_routes(solution, routing, manager)
 
     # Print solution on console.
     if solution:
         print_solution(data, manager, routing, solution)
+        
+    sol = ()
+    # Display the routes.
+    for i, route in enumerate(routes):
+      sol += (route,)
+      #print('Route', i, route)
+      
+    return(sol)
 
 
 if __name__ == '__main__':
-    main()
+    sol = main() 
+    sol
     
-    
-    
+list_coord = [tuple(l) for l in [t[::-1] for t in dst]] # list of tuples of coordinates (lat, lon) in a list
+
+path = 1 # access first route
+solut = []
+solut[:] = sol[path][0]
+solut = [list_coord[i] for i in solut]
+  
+
+#### Plot ####
+# ----------------------------------------------------
+# key of API
+key = 'AIzaSyA2KJIwDsDNnjBOzQUdqn_6TVyE2DHbscM'
+gmaps.configure(api_key=key)
+gmaps = googlemaps.Client(key=key)
+# ----------------------------
+
+import gmplot
+import gmaps
+gmap = gmplot.GoogleMapPlotter(35.854938,14.486100, 11, apikey=key)
+# region Define malta area for display purposes
+malta_region = zip(*[
+    (35.803328, 14.554822),
+    (35.800475, 14.496695),
+    (35.825082, 14.398712),
+    (35.868734, 14.326598),
+    (35.973936, 14.290459),
+    (36.004854, 14.266097),
+    (36.030803, 14.177367),
+    (36.087915, 14.176825),
+    (36.096223, 14.259044),
+    (36.054412, 14.353785),
+    (35.882201, 14.593547),
+    (35.828978, 14.586117)
+])
+
+users
+gmap.polygon(*malta_region, face_color='skyblue', edge_color='royalblue', edge_width=4)
+for j in range(1,len(solut)-1):
+  gmap.text(solut[j][0]+0.003, solut[j][1], '(' + str(j) + ')' + str(demands[j]), color='navy')
+gmap.directions(solut[0],solut[len(solut)-1], waypoints = solut[1:(len(solut)-2)])
+
+gmap.draw('map2.html')
+webbrowser.open_new_tab('map2.html')

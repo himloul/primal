@@ -14,16 +14,21 @@ from Mapper import get_shortest, get_duration, get_possible
 
 taxis = pd.read_csv('taxis.csv', sep = ";")
 users = pd.read_csv('users_cal.csv', sep = ";")
-depot = [[-9.575533, 30.416634]]
+depot = [[14.486100,35.854938]]
+users = users.round({'longitude_p': 6, 'latitude_p': 6, 'longitude_d': 6, 'latitude_d': 6})
 
 # list of pickups and deliveries coordinates
 src = taxis[['longitude', 'latitude']].values.tolist()
-dst = depot + users[['longitude_p', 'latitude_p']].values.tolist() + users[['longitude_p', 'latitude_p']].values.tolist()
+dst = depot + users[['longitude_p', 'latitude_p']].values.tolist() + users[['longitude_d', 'latitude_d']].values.tolist()
 
 # list of pickup - delivery
 pd_list = []
 for i in range(1,len(users['key'])+1,1):
   pd_list.append([i,i+len(users['key'])])
+  
+# list of demands
+d_list = users["number_people"].values.tolist()
+demands = [0] + d_list + [i * -1 for i in d_list]
 
 # Configure OSRM server
 osrm.RequestConfig.host = "http://router.project-osrm.org" # this sets the new url
@@ -38,7 +43,7 @@ def create_data_model():
     data['num_vehicles'] = 2 #len(taxis.index)
     data['pickups_deliveries'] = pd_list
     data['depot'] = 0
-    data['demands'] = [0, 0, 0, 0, 0, 0, 1, 1, 2, 1, 3]
+    data['demands'] = demands
     data['vehicle_capacities'] = [4, 4]
     return data
 
@@ -54,7 +59,6 @@ def print_solution(data, manager, routing, solution):
         plan_output = 'Route for vehicle {}:\n'.format(vehicle_id)
         route_distance = 0
         route_load = 0
-        
         while not routing.IsEnd(index):
             node_index = manager.IndexToNode(index)
             plan_output += ' {} -> '.format(manager.IndexToNode(index))
@@ -80,14 +84,14 @@ def get_routes(solution, routing, manager):
     index = routing.Start(route_nbr)
     route = [manager.IndexToNode(index)]
     route_distance = 0
-    route_load = 0
+    # route_load = 0
     
     while not routing.IsEnd(index):
       previous_index = index
       index = solution.Value(routing.NextVar(index))
       route.append(manager.IndexToNode(index))
       route_distance += routing.GetArcCostForVehicle(previous_index, index, route_nbr)
-      route_load += data['demands'][route_nbr]
+      # route_load += data['demands'][route_nbr]
     routes.append([route, route_distance, route_load])
     # ([[routing_0], distance_0], [[routing_1], distance_1], [[routing_2], distance_2])
     
@@ -101,8 +105,7 @@ def main():
     data = create_data_model()
 
     # Create the routing index manager.
-    manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']),
-                                           data['num_vehicles'], data['depot'])
+    manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
 
     # Create Routing Model.
     routing = pywrapcp.RoutingModel(manager)
@@ -127,8 +130,7 @@ def main():
         from_node = manager.IndexToNode(from_index)
         return data['demands'][from_node]
 
-    demand_callback_index = routing.RegisterUnaryTransitCallback(
-        demand_callback)
+    demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
     routing.AddDimensionWithVehicleCapacity(
         demand_callback_index,
         0,  # null capacity slack
@@ -153,39 +155,34 @@ def main():
         pickup_index = manager.NodeToIndex(request[0])
         delivery_index = manager.NodeToIndex(request[1])
         routing.AddPickupAndDelivery(pickup_index, delivery_index)
-        routing.solver().Add(
-            routing.VehicleVar(pickup_index) == routing.VehicleVar(
-                delivery_index))
-        routing.solver().Add(
-            distance_dimension.CumulVar(pickup_index) <=
-            distance_dimension.CumulVar(delivery_index))
+        routing.solver().Add(routing.VehicleVar(pickup_index) == routing.VehicleVar(delivery_index))
+        routing.solver().Add(distance_dimension.CumulVar(pickup_index) <= distance_dimension.CumulVar(delivery_index))
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION)
+    search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION)
 
     # Solve the problem.
     solution = routing.SolveWithParameters(search_parameters)
     
     # Get the routes
-    routes = get_routes(solution, routing, manager)
+    # routes = get_routes(solution, routing, manager)
 
     # Print solution on console.
     if solution:
         print_solution(data, manager, routing, solution)
         
-    sol = ()
-    # Display the routes.
-    for i, route in enumerate(routes):
-      sol += (route,)
-      #print('Route', i, route)
-      
-    return(sol)
+    # sol = ()
+    # # Display the routes.
+    # for i, route in enumerate(routes):
+    #   sol += (route,)
+    #   #print('Route', i, route)
+    #   
+    # return(sol)
 
 
 if __name__ == '__main__':
-    sol = main() 
+    main() 
     sol
 
 # # List of routing to dataframe
@@ -204,12 +201,12 @@ if __name__ == '__main__':
 # 
 # dfroute(1)
 
-# merge dataframes into one.
-appended_data = []
-for i in range(0,len(sol)):
-  appended_data.append(dfroute(i))
-
-appended_data = pd.concat(appended_data)
+# # merge dataframes into one.
+# appended_data = []
+# for i in range(0,len(sol)):
+#   appended_data.append(dfroute(i))
+# 
+# appended_data = pd.concat(appended_data)
 
 path = 0 # access first route
 solut[:] = sol[path][0]
