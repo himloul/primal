@@ -11,7 +11,6 @@ import gmplot
 import webbrowser
 import gmaps
 import googlemaps
-from Mapper import get_shortest, get_duration, get_possible
 
 # DATA PREPARATION ------------------
 
@@ -167,6 +166,7 @@ sol
 list_coord = [tuple(l) for l in [t[::-1] for t in dst]] # list of tuples of coordinates (lat, lon) in a list
 list_nodes = ["depot"] + users["key"].values.tolist() + users["key"].values.tolist()
 list_sign = ["*"]+ ["+" for i in range(0,len(users["key"].values))] + ["-" for i in range(0,len(users["key"].values))]
+sols = [row[0] for row in sol]
 
 # list of coordinates of the waypoints of routes
 solution = [[list_coord[i] for i in sol[j][0]] for j in range(len(sol))]
@@ -180,7 +180,6 @@ sign_nodes = [[list_sign[i] for i in sol[j][0]] for j in range(len(sol))]
 key = 'AIzaSyA2KJIwDsDNnjBOzQUdqn_6TVyE2DHbscM'
 gmaps.configure(api_key=key)
 gmaps = googlemaps.Client(key=key)
-k = 0
 # ----------------------------
 
 import gmplot
@@ -207,7 +206,7 @@ malta_region = zip(*[
 gmap.polygon(*malta_region, face_color='skyblue', edge_color='royalblue', edge_width=4)
 
 # Define colors
-colors = {0: 'orange', 1: 'yellowgreen', 2: 'dodgerblue', 3: 'peru', 4: 'palegreen'}
+colors = {0: 'gold', 1: 'coral', 2: 'dodgerblue', 3: 'mediumpurple', 4: 'palegreen'}
 
 # For legend
 color_index = [(36.051892, 14.040469), (36.035764, 14.040421), (36.019764, 14.040421), (36.003764, 14.040421), (35.987764, 14.040421)]
@@ -225,7 +224,10 @@ for k in range(len(solution)):
         label = str(j), 
         title = str(demands[j]), 
         color=colors[k], 
-        info_window = str(solution_nodes[k][j]) + "  (" + str(sign_nodes[k][j]) + " " + str(abs(demands[j])) + " )")
+        info_window = "<p><b>Request:</b> "+str(solution_nodes[k][j])+"<br><b>Number:</b> "+str(sign_nodes[k][j])+" "+str(abs(demands[j]))+"<br><b>Destination:</b> "
+          +str([i for i,val in enumerate(solution_nodes[k]) if val==solution_nodes[k][j]][1])+"<br><b>Total:</b> </p>" # Next destination
+          )
+
 
 # Add text / users
 for k in range(len(solution)):
