@@ -171,8 +171,12 @@ sol
 # ------------ EXTRACT THE RESULTS ---------------
 # list of tuples of coordinates (lat, lon) in a list
 # lists based on the solution
+list_coord = [tuple(l) for l in [t[::-1] for t in dst]] # list of tuples of coordinates (lat, lon) in a list
+list_nodes = ["depot"] + users["key"].values.tolist() + users["key"].values.tolist()
 solution_coord = [[list_coord[i] for i in sol[j][0]] for j in range(len(sol))]
 solution_nodes = [[list_nodes[i] for i in sol[j][0]] for j in range(len(sol))]
+# Define colors
+colors = {0: 'gold', 1: 'coral', 2: 'dodgerblue', 3: 'mediumpurple', 4: 'palegreen'}
 
 #### Plot ####
 # ----------------------------------------------------
