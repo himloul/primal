@@ -5,7 +5,7 @@ library(reshape2)
 
 # Import Taxis
 taxis = read.csv('taxis.csv', sep = ";")
-taxis
+taxis 
 
 # Import Users
 users = read.csv('users_cal.csv', sep = ";")
@@ -28,5 +28,5 @@ melt(opt) %>%
   filter(value != 0) %>%
   select(1:2)
 
-reticulate::py_install("osrm", pip = T)
+reticulate::py_install("flask", pip = T)
 

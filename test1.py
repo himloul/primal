@@ -11,7 +11,7 @@ import gmaps
 import googlemaps
 from Mapper import get_shortest, get_duration, get_possible
 
-
+# import data
 taxis = pd.read_csv('taxis.csv', sep = ";")
 users = pd.read_csv('users_cal.csv', sep = ";")
 depot = [[14.486100,35.854938]]
@@ -33,7 +33,7 @@ demands = [0] + d_list + [i * -1 for i in d_list]
 # Configure OSRM server
 osrm.RequestConfig.host = "http://router.project-osrm.org" # this sets the new url
 
-#### Data ####
+#### Data Model ####
 
 def create_data_model():
     """Stores the data for the problem."""
@@ -95,7 +95,6 @@ def get_routes(solution, routing, manager):
     routes.append([route, route_distance, route_load])
     # ([[routing_0], distance_0], [[routing_1], distance_1], [[routing_2], distance_2])
     
-    
   return routes
 
 
@@ -109,7 +108,6 @@ def main():
 
     # Create Routing Model.
     routing = pywrapcp.RoutingModel(manager)
-
 
     # Define cost of each arc.
     def distance_callback(from_index, to_index):
