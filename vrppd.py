@@ -14,7 +14,7 @@ import googlemaps
 
 #Taxis
 taxis = pd.read_csv('taxis.csv', sep = ";")
-nv = 4 # Number of vehicles
+nv = 3 # Number of vehicles
 
 #Users
 users = pd.read_csv('users.csv', sep = ";")
@@ -32,14 +32,14 @@ dst = depot + users[['longitude_p', 'latitude_p']].values.tolist() + users[['lon
 list_pd = []
 for i in range(1,len(users['key'])+1,1):
   list_pd.append([i,i+len(users['key'])])
+  
+# Configure OSRM server
+osrm.RequestConfig.host = "http://router.project-osrm.org" # this sets the new url
 
 # list of demands
 d_list = users["number_people"].values.tolist()
 demands = [0] + d_list + [i * -1 for i in d_list]
 dmatrix = osrm.table(dst, output='np')[0].tolist()
-
-# Configure OSRM server
-osrm.RequestConfig.host = "http://router.project-osrm.org" # this sets the new url
 
 # DATA MODEL ------------------
 
@@ -195,7 +195,8 @@ solution = [[list_coord[i] for i in sol[j][0]] for j in range(len(sol))]
 solution_nodes = [[list_nodes[i] for i in sol[j][0]] for j in range(len(sol))]
 sign_nodes = [[list_sign[i] for i in sol[j][0]] for j in range(len(sol))]
 routes_distance = [row[1] for row in sol]
-cumul = [np.cumsum([demands[i] for i in sols[2]]).tolist() for k in range(len(sols))]
+cumul = [np.cumsum([demands[i] for i in sols[k]]).tolist() for k in range(len(sols))]
+sol_demands = [[demands[i] for i in sols[k]] for k in range(len(sols))]
 
 #### Plot ####
 # ----------------------------------------------------
@@ -238,14 +239,13 @@ for j in range(0,len(color_index)-1):
 # Add markers
 for k in range(len(solution)):
     for j in range(len(solution[k])-1):
-        gmap.marker(solution[k][j][0], solution[k][j][1], 
-        label = str(j), 
-        title = str(demands[j]), 
-        color=colors[k], 
-        info_window = "<p><b>Request:</b> "+str(solution_nodes[k][j])+"<br><b>Number:</b> "+str(sign_nodes[k][j])+" "+str(abs(demands[j]))+"<br><b>Destination:</b> "
-          +str([i for i,val in enumerate(solution_nodes[k]) if val==solution_nodes[k][j]][1])+"<br><b>Total in cab: "+str(cumul[k][j])+"</b> </p>" # Next destination
+        gmap.marker(solution[k][j][0], solution[k][j][1],
+        label = str(j),
+        title = str(demands[j]),
+        color=colors[k],
+        info_window = "<p><b>Request:</b> "+str(solution_nodes[k][j])+"<br><b>Number:</b> "+str(sol_demands[k][j])+"<br><b>Destination:</b> "
+          +str([i for i,val in enumerate(solution_nodes[k]) if val==solution_nodes[k][j]][1])+"<br><b>Total in cab: "+str(cumul[k][j])+"</b></p>" # Next destination
           )
-
 
 # Add text / users
 for k in range(len(solution)):
@@ -266,46 +266,3 @@ for k in range(len(solution)):
 
 gmap.draw('maps.html')
 webbrowser.open_new_tab('maps.html')
-
-
-# def map_route(route_number, key):
-#     """docstring for mapping"""
-#     gmaps = googlemaps.Client(key=key)
-#     k = route_number
-#     # ----------------------------
-#     
-#     import gmplot
-#     import gmaps
-#     gmap = gmplot.GoogleMapPlotter(35.854938,14.486100, 11, apikey=key)
-#     
-#     # region Define malta area for display purposes
-#     malta_region = zip(*[
-#         (35.803328, 14.554822),
-#         (35.800475, 14.496695),
-#         (35.825082, 14.398712),
-#         (35.868734, 14.326598),
-#         (35.973936, 14.290459),
-#         (36.004854, 14.266097),
-#         (36.030803, 14.177367),
-#         (36.087915, 14.176825),
-#         (36.096223, 14.259044),
-#         (36.054412, 14.353785),
-#         (35.882201, 14.593547),
-#         (35.828978, 14.586117)
-#     ])
-#     
-#     # Add geofencing zone
-#     gmap.polygon(*malta_region, face_color='skyblue', edge_color='royalblue', edge_width=4)
-#     
-#     # Define colors
-#     colors = {0: 'orange', 1: 'yellowgreen', 2: 'dodgerblue', 3: 'peru', 4: 'palegreen'}
-#     
-#     # Add markers
-#     for j in range(1,len(solution[1])-1):
-#       gmap.marker(solution[k][j][0], solution[k][j][1], label = str(j), title = str(demands[j]), color=colors[k])
-#     
-#     # Add direction
-#     gmap.directions(solution[k][0],solution[k][len(solution[1])-2], waypoints = solution[k][1:(len(solution[k])-2)])
-#     
-#     gmap.draw('map'+str(k)+'.html')
-# map_route(3, key)
