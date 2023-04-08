@@ -16,9 +16,15 @@ from Mapper import get_shortest, get_duration, get_possible
 
 # DATA PREPARATION ------------------
 
+vehicles_data_path = "data/taxis.csv"
+users_data_path = "data/users.py"
+depot_loc = [[14.486100,35.854938]]
+
 taxis = pd.read_csv('taxis.csv', sep = ";")
 users = pd.read_csv('users.csv', sep = ";")
 depot = [[14.486100,35.854938]]
+
+# Round the digits to 6 after commas
 users = users.round({'longitude_p': 6, 'latitude_p': 6, 'longitude_d': 6, 'latitude_d': 6})
 
 # list of pickups and deliveries coordinates
@@ -35,11 +41,10 @@ d_list = users["number_people"].values.tolist()
 demands = [0] + d_list + [i * -1 for i in d_list]
 matrix = osrm.table(dst, output='np')[0].tolist()
 
-
 # Configure OSRM server
 osrm.RequestConfig.host = "http://router.project-osrm.org" # this sets the new url
 
-# DATA MODEL ------------------
+# DATA MODEL ------------------s
 
 def create_data_model():
     """Stores the data for the problem."""
