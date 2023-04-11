@@ -2,7 +2,7 @@ import gmplot
 import webbrowser
 from User import user
 from Taxi import taxi
-from Mapper import get_shortest, get_duration, get_possible
+from mapper import get_shortest, get_duration, get_possible
 
 
 # key of API

@@ -9,7 +9,7 @@ import gmplot
 import webbrowser
 import gmaps
 import googlemaps
-from Mapper import get_shortest, get_duration, get_possible
+from mapper import get_shortest, get_duration, get_possible
 
 # import data
 taxis = pd.read_csv('taxis.csv', sep = ";")

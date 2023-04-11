@@ -1,5 +1,39 @@
-# MaltaVRP
-Capacited Vehicles Routing Problem (CVRP).
+# MaltaVRP 🚖
+Capacited Vehicles Routing Problem (CVRP) on Taxis service.  
+Malta as a case study.
+
+## Quick start
+
+Create a virtual environment
+
+```bash
+# Create the env
+python -m venv env
+
+# Activate
+source env/Scripts/activate
+
+pip3 install -U pip
+
+# Install your modules
+pip3 install osrm
+
+# Create the requirements.txt file
+pip freeze > requirements.txt
+
+# After finishing the work, deactivate
+deactivate
+```
+NOTE
+> if it shows an error related to GDAL.  
+Download the wheel from http://www.lfd.uci.edu/~gohlke/pythonlibs/#gdal  
+then install it 
+
+```bash
+pip install "c:\Users\hamza\Downloads\GDAL-3.3.3-cp39-cp39-win_amd64.whl"
+pip install osrm
+pip install --force-reinstall -v "polyline==1.3"
+```
 
 ## Drafts
 

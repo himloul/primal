@@ -2,39 +2,45 @@
 
 """Capacited Vehicles Routing Problem (CVRP)."""
 import pandas as pd
-import gmplot
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
-import geopandas
+from src.mapper import get_shortest, get_duration, get_possible
 import osrm
+import geopandas
 import numpy as np
-import gmplot
-import webbrowser
-import gmaps
-import googlemaps
-from Mapper import get_shortest, get_duration, get_possible
 
-# DATA PREPARATION ------------------
+import webbrowser, gmplot, gmaps, googlemaps
 
+# pip install gdal==2.2.3
+
+#* DATA PREPARATION
+
+# define the variables
 vehicles_data_path = "data/taxis.csv"
-users_data_path = "data/users.py"
-depot_loc = [[14.486100,35.854938]]
+users_data_path = "data/users.csv"
+depot_loc = {
+  "depot_location": {
+    "latitude": 14.486100,
+    "longitude": 35.854938
+  }
+}
 
-taxis = pd.read_csv('taxis.csv', sep = ";")
-users = pd.read_csv('users.csv', sep = ";")
-depot = [[14.486100,35.854938]]
+# Load the datasets
+taxis = pd.read_csv(vehicles_data_path, sep = ";")
+users = pd.read_csv(users_data_path, sep = ";")
 
 # Round the digits to 6 after commas
 users = users.round({'longitude_p': 6, 'latitude_p': 6, 'longitude_d': 6, 'latitude_d': 6})
+depot = [[depot_loc['depot_location']['latitude'],depot_loc['depot_location']['longitude']]]
 
-# list of pickups and deliveries coordinates
+# list of pickups coordinates
 src = taxis[['longitude', 'latitude']].values.tolist()
+
+# all list of pickups and deliveries coordinates combined
 dst = depot + users[['longitude_p', 'latitude_p']].values.tolist() + users[['longitude_d', 'latitude_d']].values.tolist()
 
 # list of pickup - delivery
-pd_list = []
-for i in range(1,len(users['key'])+1,1):
-  pd_list.append([i,i+len(users['key'])])
+pd_list = [[i, i+len(users['key'])] for i in range(1, len(users['key'])+1)]
 
 # list of demands
 d_list = users["number_people"].values.tolist()
