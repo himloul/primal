@@ -1,7 +1,7 @@
 import gmplot
 import webbrowser
-from User import user
-from Taxi import taxi
+from user import user
+from taxi import taxi
 from mapper import get_shortest, get_duration, get_possible
 
 
