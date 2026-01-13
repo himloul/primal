@@ -1,4 +1,4 @@
-# MarrakechVRP
+# Primal
 
 A minimalist, high-performance engine for solving the **Capacitated Pickup and Delivery Problem with Time Windows (CPDPTW)**. While currently localized to Marrakech, The implementation is city-agnostic and generalizes to any road network via OpenStreetMap.
 
@@ -12,13 +12,13 @@ The system is split into three main parts:
 1. [Routing Engine](src/routing.py): Instead of using straight-line "as-the-crow-flies" distances, we download the Marrakech road graph via `osmnx`. We calculate the $N \times N$ cost matrix by running Single-Source Dijkstra $N$ times. For visualization, we trace the actual path through the graph nodes to get the real road geometry.
 2. **Interface:** A lightweight FastAPI backend that exposes a `/solve` endpoint and serves a minimalist, shadcn-inspired dashboard. No React/Next.js bloat—just vanilla JS and Leaflet.js.
 
-## The Gory Details
+## Details
 
 - **Scaling:** OR-Tools is an integer solver. Since travel times are floats, we scale everything by 100 (mapping 1.55 seconds to 155). This preserves precision while keeping the solver efficient.
 - **Graph Snapping:** GPS coordinates rarely land exactly on a road. We use a k-d tree to snap every input point to the nearest graph node before computing paths.
 - **Time Windows:** The solver includes 'Slack' variables, allowing vehicles to arrive early and wait until a user's `ready_time` is reached.
 
-## Running this thing
+## Running the app
 
 You'll need a standard Python 3.12+ install.
 
