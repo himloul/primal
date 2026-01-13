@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MarrakechVRP | Solver</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: white;
+            color: #09090b;
+        }
+
+        #map { height: 100%; width: 100%; z-index: 1; filter: grayscale(0.1); }
+        
+        .custom-marker {
+            display: flex; align-items: center; justify-content: center;
+            border: 2px solid white; border-radius: 50%; color: white;
+            font-weight: 600; font-size: 10px;
+        }
+
+        /* UI Separators */
+        .sep-b { border-bottom: 1px solid #e4e4e7; }
+        .sep-r { border-right: 1px solid #e4e4e7; }
+        .sep-t { border-top: 1px solid #e4e4e7; }
+
+        .leaflet-control-attribution { display: none; }
+        .leaflet-bar { border: 1px solid #e4e4e7 !important; box-shadow: none !important; border-radius: 4px !important; }
+    </style>
+</head>
+<body class="h-screen flex flex-col antialiased">
+
+    <nav class="h-14 sep-b flex items-center justify-between px-8 shrink-0">
+        <div class="flex items-center gap-6">
+            <h1 class="text-sm font-bold tracking-tight flex items-center gap-2">
+                <i data-lucide="compass" class="w-4 h-4"></i> MarrakechVRP
+            </h1>
+            <div class="flex items-center gap-2">
+                <div id="status-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                <span id="status-text" class="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Engine Ready</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <button onclick="solve()" id="run-btn" class="bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium px-5 py-2 rounded-sm transition-all flex items-center gap-2">
+                Run Optimization
+            </button>
+        </div>
+    </nav>
+
+    <div class="flex-1 flex overflow-hidden">
+        
+        <aside class="w-80 flex flex-col shrink-0 h-full sep-r overflow-y-auto">
+            
+            <div class="p-6 sep-b">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Fleet Setup</h2>
+                    <i data-lucide="truck" class="w-3.5 h-3.5 text-zinc-300"></i>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-[10px] font-medium text-zinc-500 uppercase">Active Vehicles</label>
+                        <input type="number" id="fleet-count" value="4" min="1" max="10" 
+                               class="w-full px-3 py-2 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-400 transition-all">
+                    </div>
+                    
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-[10px] font-medium text-zinc-500 uppercase">Pax Capacity</label>
+                        <input type="number" id="fleet-capacity" value="4" min="1" max="8" 
+                               class="w-full px-3 py-2 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-400 transition-all">
+                    </div>
+
+                    <div class="flex flex-col gap-1.5 opacity-50">
+                        <label class="text-[10px] font-medium text-zinc-500 uppercase">Depot (Marrakech Station)</label>
+                        <div class="text-[10px] font-mono text-zinc-400 bg-zinc-50 p-2 rounded border border-zinc-100">
+                            -8.0194, 31.6300
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="stats-panel" class="hidden p-6 sep-b animate-in fade-in duration-300">
+                <h3 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-4">Overview</h3>
+                <div class="flex gap-10">
+                    <div>
+                        <p class="text-xl font-medium tracking-tight" id="stat-vehicles">0</p>
+                        <p class="text-[9px] text-zinc-400 uppercase">Taxis</p>
+                    </div>
+                    <div>
+                        <p class="text-xl font-medium tracking-tight" id="stat-time">0</p>
+                        <p class="text-[9px] text-zinc-400 uppercase">Minutes</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="active-routes-card" class="hidden p-6 sep-b animate-in fade-in duration-300">
+                <h2 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-4">Assignments</h2>
+                <div id="route-legend" class="space-y-3"></div>
+            </div>
+
+            <div id="timeline-container" class="hidden p-6 sep-b animate-in fade-in duration-300">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Shift Timeline</span>
+                    <div class="flex gap-3 text-[8px] text-zinc-300 font-bold uppercase">
+                        <span class="flex items-center gap-1"><div class="w-1 h-1 rounded-full bg-zinc-900"></div> Drive</span>
+                    </div>
+                </div>
+                <div id="timeline-content" class="space-y-3"></div>
+            </div>
+
+            <div class="p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Live Queue</h2>
+                        <span class="text-[10px] text-zinc-300 font-mono" id="user-count">0</span>
+                    </div>
+                    <button onclick="addRequest()" class="text-zinc-400 hover:text-zinc-900 transition-colors">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div id="user-list" class="flex-1 overflow-y-auto space-y-2 pr-2"></div>
+            </div>
+        </aside>
+
+        <section class="flex-1 flex flex-col overflow-hidden relative">
+            <div id="map"></div>
+        </section>
+
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // --- Global Application State ---
+        // Keeps track of the current user requests being managed in the UI sidebar.
+        let state = {
+            users: [
+                {"id": "REQ-001", "p_lon": -7.9891, "p_lat": 31.6258, "d_lon": -8.0120, "d_lat": 31.6450, "passengers": 1, "service_time": 120, "ready_time": 0, "due_time": 1800},
+                {"id": "REQ-002", "p_lon": -8.0050, "p_lat": 31.6320, "d_lon": -7.9750, "d_lat": 31.6150, "passengers": 2, "service_time": 120, "ready_time": 600, "due_time": 2400}
+            ]
+        };
+
+        // --- Map Initialization ---
+        // Centered on Marrakech, Morocco. Using CartoDB Positron (light grayscale) 
+        // to ensure colored routes are clearly visible.
+                const map = L.map('map', { zoomControl: false }).setView([31.63, -8.01], 13);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
+                L.control.zoom({ position: 'topright' }).addTo(map);
+        
+                // --- Depot Rendering ---
+                // Render a persistent, unique marker for the central hub.
+                const DEPOT_COORDS = [31.6300, -8.0194];
+                const depotIcon = L.divIcon({
+                    className: 'depot-marker',
+                    html: `<div style="background-color: #09090b; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <i data-lucide="home" style="width: 16px; height: 16px; color: white;"></i>
+                           </div>`,
+                    iconSize: [32, 32], iconAnchor: [16, 16]
+                });
+                L.marker(DEPOT_COORDS, { icon: depotIcon, zIndexOffset: 1000 })
+                    .bindTooltip("<b>Central Depot</b><br>Marrakech Station")
+                    .addTo(map);
+        
+                let routeLayers = []; 
+         // Stores the final optimized route polylines and markers
+        let previewLayers = []; // Stores the pre-optimization pickup/dropoff dots
+        const palette = ['#4f46e5', '#e11d48', '#10b981', '#f59e0b', '#8b5cf6']; 
+
+        // --- UI Rendering Functions ---
+
+        /**
+         * Renders small dots on the map for every request in the queue.
+         * Solid Dot = Pickup | Hollow Dashed Dot = Dropoff
+         */
+        function renderUserPreview() {
+            previewLayers.forEach(l => map.removeLayer(l));
+            previewLayers = [];
+
+            state.users.forEach(u => {
+                const pMarker = L.circleMarker([u.p_lat, u.p_lon], {
+                    radius: 5, fillColor: "#18181b", color: "#fff", weight: 2, fillOpacity: 1
+                }).bindTooltip(`<b>Pickup:</b> ${u.id}`).addTo(map);
+                
+                const dMarker = L.circleMarker([u.d_lat, u.d_lon], {
+                    radius: 5, fillColor: "transparent", color: "#18181b", weight: 2, dashArray: "3, 3", fillOpacity: 0
+                }).bindTooltip(`<b>Dropoff:</b> ${u.id}`).addTo(map);
+
+                previewLayers.push(pMarker, dMarker);
+            });
+        }
+
+        function renderUserList() {
+            const list = document.getElementById('user-list');
+            document.getElementById('user-count').innerText = state.users.length;
+            list.innerHTML = '';
+            
+            state.users.forEach((u, index) => {
+                list.innerHTML += `
+                    <div class="group flex items-center justify-between text-[11px] hover:bg-zinc-50 p-1 rounded-sm transition-colors cursor-default">
+                        <div class="flex flex-col">
+                            <span class="text-zinc-600 font-medium">${u.id}</span>
+                            <span class="text-[8px] text-zinc-300 font-bold uppercase">PAX ${u.passengers} • ${u.ready_time}s</span>
+                        </div>
+                        <button onclick="deleteRequest(${index})" class="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-red-500 transition-all">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            lucide.createIcons();
+            renderUserPreview();
+        }
+
+        function addRequest() {
+            const id = `REQ-${String(state.users.length + 1).padStart(3, '0')}`;
+            const randCoord = (min, max) => Math.random() * (max - min) + min;
+            
+            // Marrakech Bounding Box
+            const pLat = randCoord(31.58, 31.68);
+            const pLon = randCoord(-8.08, -7.95);
+            const dLat = pLat + (Math.random() - 0.5) * 0.04;
+            const dLon = pLon + (Math.random() - 0.5) * 0.04;
+
+            state.users.push({
+                "id": id,
+                "p_lat": pLat, "p_lon": pLon,
+                "d_lat": dLat, "d_lon": dLon,
+                "passengers": Math.floor(Math.random() * 3) + 1,
+                "service_time": 120,
+                "ready_time": Math.floor(Math.random() * 3600),
+                "due_time": 7200
+            });
+            renderUserList();
+        }
+
+        function deleteRequest(index) {
+            state.users.splice(index, 1);
+            renderUserList();
+        }
+
+        renderUserList();
+
+        async function solve() {
+            const btn = document.getElementById('run-btn');
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            try {
+                btn.disabled = true;
+                btn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Solving...`;
+                lucide.createIcons();
+                dot.className = "w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse";
+                text.innerText = "Optimizing Marrakech...";
+
+                const count = parseInt(document.getElementById('fleet-count').value);
+                const capacity = parseInt(document.getElementById('fleet-capacity').value);
+                
+                const fleet = {
+                    "depot": { "location": [-8.0194, 31.6300] },
+                    "taxis": Array.from({ length: count }, (_, i) => ({
+                        "id": `TX-${i + 1}`, "capacity": capacity
+                    }))
+                };
+
+                const response = await fetch('/solve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fleet, users: state.users })
+                });
+
+                if (!response.ok) throw new Error('Solver failed.');
+                const result = await response.json();
+
+                routeLayers.forEach(l => map.removeLayer(l));
+                previewLayers.forEach(l => map.removeLayer(l));
+                routeLayers = [];
+                previewLayers = [];
+                
+                renderResult(result);
+                dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
+                text.innerText = "Engine Ready";
+
+            } catch (err) {
+                alert(err.message);
+                dot.className = "w-1.5 h-1.5 rounded-full bg-red-500";
+                text.innerText = "Engine Error";
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `Run Optimization`;
+                lucide.createIcons();
+            }
+        }
+
+        function renderResult(result) {
+            document.getElementById('stats-panel').classList.remove('hidden');
+            document.getElementById('active-routes-card').classList.remove('hidden');
+            document.getElementById('timeline-container').classList.remove('hidden');
+            
+            const timeline = document.getElementById('timeline-content');
+            const legend = document.getElementById('route-legend');
+            timeline.innerHTML = '';
+            legend.innerHTML = '';
+
+            document.getElementById('stat-vehicles').innerText = result.routes.length;
+            document.getElementById('stat-time').innerText = ((result.total_time_cost / 100) / 60).toFixed(0);
+
+            result.routes.forEach((route, idx) => {
+                const color = palette[idx % palette.length];
+                
+                // 1. Draw Real Road Geometry
+                const roadLatLons = route.geometry.map(pt => [pt[1], pt[0]]);
+                const poly = L.polyline(roadLatLons, { color: color, weight: 3, opacity: 0.7 }).addTo(map);
+                routeLayers.push(poly);
+
+                // 2. Draw Stop Markers
+                route.steps.forEach((step, sIdx) => {
+                    const icon = L.divIcon({
+                        className: 'custom-marker',
+                        html: `<div style="background-color: ${color}; width: 24px; height: 24px; line-height: 24px; border-radius: 50%; text-align: center;">${sIdx}</div>`,
+                        iconSize: [24, 24], iconAnchor: [12, 12]
+                    });
+                    const marker = L.marker([step.location[1], step.location[0]], { icon })
+                        .bindPopup(`<div class="text-[10px] p-1 font-medium text-zinc-500 uppercase">${step.type}: <b class="text-zinc-900">${step.id}</b><br>Arr: <b class="text-zinc-900">${step.arrival_time_formatted}</b></div>`)
+                        .addTo(map);
+                    routeLayers.push(marker);
+                });
+
+                legend.innerHTML += `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-1.5 h-1.5 rounded-full" style="background-color: ${color}"></div>
+                            <span class="text-[11px] font-medium text-zinc-600">Unit ${idx + 1}</span>
+                        </div>
+                        <span class="text-[10px] text-zinc-400 font-mono">${(route.cost_time / 100 / 60).toFixed(0)}m</span>
+                    </div>
+                `;
+
+                const totalWidth = 86400; 
+                timeline.innerHTML += `
+                    <div class="flex flex-col gap-1">
+                        <div class="text-[8px] font-black text-zinc-300 uppercase tracking-tighter">Taxi ${idx+1}</div>
+                        <div class="h-1.5 bg-zinc-50 rounded-full relative overflow-hidden border border-zinc-100">
+                            ${route.steps.map((s, i) => {
+                                if (i === 0) return '';
+                                const prev = route.steps[i-1];
+                                const startPos = (prev.arrival_time_sec / totalWidth) * 100;
+                                const width = ((s.arrival_time_sec - prev.arrival_time_sec) / totalWidth) * 100;
+                                return `<div class="absolute h-full" style="left: ${startPos}%; width: ${width}%; background-color: ${color}; opacity: 0.8"></div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            const group = new L.featureGroup(routeLayers);
+            map.fitBounds(group.getBounds(), { padding: [100, 100] });
+        }
+    </script>
+</body>
+</html>
