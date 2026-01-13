@@ -1,8 +1,8 @@
 {
     "depot": {
-        "id": "MAIN_DEPOT",
-        "location": [14.486100, 35.854938],
-        "name": "Malta Central Depot"
+        "id": "MARRAKECH_STATION",
+        "location": [-8.0194, 31.6300],
+        "name": "Marrakech Railway Station"
     },
     "taxis": [
         {"id": "TX_01", "capacity": 4},
