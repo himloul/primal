@@ -2,10 +2,10 @@ scikit-learn
 pandas
 ortools
 numpy
-folium
 osmnx
 scipy
 networkx
-geopy
-polyline
 requests
+fastapi
+uvicorn
+pydantic
