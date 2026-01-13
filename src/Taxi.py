@@ -1,7 +1,11 @@
-import gmplot
+from geopy.geocoders import Nominatim
+import logging
+
+# Set up geocoder
+geolocator = Nominatim(user_agent="maltavrp")
 
 class taxi:
-    def __init__(self, location, key, number_people=0, capacity=4):
+    def __init__(self, location, key=None, number_people=0, capacity=4):
         self.location = location
         self.number = number_people
         self.capacity = capacity
@@ -15,7 +19,15 @@ class taxi:
         return self.location
 
     def geo(self):
-        return gmplot.GoogleMapPlotter.geocode(self.location, apikey=self.key)
+        """Helper to geocode using OpenStreetMap."""
+        try:
+            location = geolocator.geocode(self.location)
+            if location:
+                return (location.latitude, location.longitude)
+            return None
+        except Exception as e:
+            logging.error(f"Geocoding error: {e}")
+            return None
 
     def add_people(self, user):
         if self.number+user.get_number() > self.capacity:

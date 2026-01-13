@@ -1,120 +1,110 @@
-import gmplot
-import webbrowser
 from user import user
 from taxi import taxi
 from mapper import get_shortest, get_duration, get_possible
+from viz_folium import FoliumMap
+import os
 
-
-# key of API
-key = 'AIzaSyA2KJIwDsDNnjBOzQUdqn_6TVyE2DHbscM'
-
-
-gmap = gmplot.GoogleMapPlotter(35.911079, 14.405030, 11, apikey=key)
-
-# region Define malta area for display purposes
-malta_region = zip(*[
-    (35.803328, 14.554822),
-    (35.800475, 14.496695),
-    (35.825082, 14.398712),
-    (35.868734, 14.326598),
-    (35.973936, 14.290459),
-    (36.004854, 14.266097),
-    (36.030803, 14.177367),
-    (36.087915, 14.176825),
-    (36.096223, 14.259044),
-    (36.054412, 14.353785),
-    (35.882201, 14.593547),
-    (35.828978, 14.586117)
-])
-gmap.polygon(*malta_region, face_color='white', edge_color='red', edge_width=4)
-# endregion
+# Initialize Folium Map centered on Malta
+m = FoliumMap(center_lat=35.911079, center_lon=14.405030, zoom_start=11)
+m.add_geofence()
 
 # region Create a dictionary for each person waiting, containing start and finish point for each
-user1 = user('Malta international airport', 'St. Peters Pool, malta', 2, 'user1', key)
-user2 = user('St Pauls Battery, malta', 'Mamo Tower, malta', 3, 'user2', key)
-user3 = user('Mnajdra, malta', 'Gudja Parish Church, malta', 1, 'user3', key)
-user4 = user('Knisja Parrokkjali San Gwann, malta', "Torri ta' San Ġiljan, malta", 3, 'user4', key)
+# Note: key=None as we no longer use Google Maps
+user1 = user('Malta international airport', 'St. Peters Pool, malta', 2, 'user1')
+user2 = user('St Pauls Battery, malta', 'Mamo Tower, malta', 3, 'user2')
+user3 = user('Mnajdra, malta', 'Gudja Parish Church, malta', 1, 'user3')
+user4 = user('Knisja Parrokkjali San Gwann, malta', "Torri ta' San Ġiljan, malta", 3, 'user4')
 
 user_dict = [user1, user2, user3, user4]
 
-taxi1 = taxi('Kappella Ta Bir Miftuħ, malta', key, 0, 4)
-taxi2 = taxi("St. Anthony's Chapel, malta", key, 0, 4)
+taxi1 = taxi('Kappella Ta Bir Miftuħ, malta', number_people=0, capacity=4)
+taxi2 = taxi("St. Anthony's Chapel, malta", number_people=0, capacity=4)
 
 taxi_dict = [taxi1, taxi2]
 # endregion
 
-# region Display user routes
-for user in user_dict:
-    start_location = user.start_geo()
-    end_location = user.end_geo()
+# region Display user routes on Folium Map
+for u in user_dict:
+    start_location = u.start_geo()
+    end_location = u.end_geo()
 
-    gmap.text(start_location[0], start_location[1], 'Start', color='green')
-    gmap.text(end_location[0], end_location[1], 'End', color='red')
+    if start_location:
+        m.add_marker(start_location[0], start_location[1], label='Start', color='palegreen', popup_text=f"{u.get_identity()} Start")
+    if end_location:
+        m.add_marker(end_location[0], end_location[1], label='End', color='coral', popup_text=f"{u.get_identity()} End")
 # endregion
 
 # region Calculate shortest route from any taxi to start of a route
-shortest_start = ['','',10000000]
-loop_num = 0
-for taxi in taxi_dict:
-    for user in user_dict:
-        start = taxi.get_location()
-        end = user.get_start()
+shortest_start = ['', '', 10000000]
+for t in taxi_dict:
+    for u in user_dict:
+        start = t.get_location()
+        end = u.get_start()
 
-        duration = get_duration(start, end, key)
+        duration = get_duration(start, end)
 
         if duration < shortest_start[2]:
-            shortest_start = [taxi, user, duration]
+            shortest_start = [t, u, duration]
 
 current_taxi = shortest_start[0]
 first_user = shortest_start[1]
 
+# Get coordinates for the taxi's path
 start_location = current_taxi.geo()
-end_location = first_user.start_geo()
-
 # endregion
 
 current_taxi.update_location(first_user.get_start())
 current_taxi.add_people(first_user)
 
-next = True
+next_step = True
 
 waypoints = []
-waypoints.append(end_location)
+if start_location:
+    waypoints.append(start_location)
+
 while len(user_dict) != 0:
     currents = current_taxi.get_users()
 
-    if next == True:
+    if next_step == True:
         if len(currents) != 0:
             dests = get_possible(currents, user_dict)
         else:
             dests = [x.get_start() for x in user_dict]
-
     else:
-        dests.remove(next)
+        dests.remove(next_step)
 
-    going = get_shortest(current_taxi.get_location(), dests, key)
+    going = get_shortest(current_taxi.get_location(), dests)
 
+    found = False
     for passengers in user_dict:
         if passengers.get_end() == going:
             print(passengers.get_identity(), ' Trip: ', current_taxi.get_location(), ' -> ', going, ' end')
             current_taxi.remove_people(passengers)
             user_dict.remove(passengers)
-            next = True
+            next_step = True
             current_taxi.update_location(going)
             waypoints.append(current_taxi.geo())
+            found = True
+            break
 
         elif passengers.get_start() == going:
             if current_taxi.add_people(passengers):
                 print(passengers.get_identity(), ' Trip: ', current_taxi.get_location(), ' -> ', going, ' start')
-                next = True
+                next_step = True
                 current_taxi.update_location(going)
                 waypoints.append(current_taxi.geo())
-
+                found = True
+                break
             else:
-                next = passengers.get_start()
+                next_step = passengers.get_start()
+                found = True
+                break
+    
+    if not found:
+        # Fallback to prevent infinite loop if destination not in user_dict
+        break
 
-gmap.directions(start_location, waypoints[-1], waypoints=waypoints[:-1])
-
-gmap.draw('map.html')
-
-webbrowser.open_new_tab('map.html')
+# Draw the final route on the map
+m.draw_route(waypoints, color='dodgerblue')
+m.save('export/map_heuristic.html')
+print("Heuristic map saved to export/map_heuristic.html")
