@@ -1,0 +1,13 @@
+{
+    "depot": {
+        "id": "MAIN_DEPOT",
+        "location": [14.486100, 35.854938],
+        "name": "Malta Central Depot"
+    },
+    "taxis": [
+        {"id": "TX_01", "capacity": 4},
+        {"id": "TX_02", "capacity": 4},
+        {"id": "TX_03", "capacity": 4},
+        {"id": "TX_04", "capacity": 4}
+    ]
+}
