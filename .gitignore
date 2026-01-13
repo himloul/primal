@@ -1,6 +1,4 @@
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
-__pycache__
-env
+env/
+cache/
+**/__pycache__
+data/*.graphml
