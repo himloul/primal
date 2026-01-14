@@ -34,6 +34,15 @@
 
         .leaflet-control-attribution { display: none; }
         .leaflet-bar { border: 1px solid #e4e4e7 !important; box-shadow: none !important; border-radius: 4px !important; }
+
+        /* Hide Scrollbar */
+        aside {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        aside::-webkit-scrollbar {
+            display: none;  /* Chrome, Safari and Opera */
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col antialiased">
@@ -275,9 +284,29 @@
                     body: JSON.stringify({ fleet, users: state.users })
                 });
 
-                if (!response.ok) throw new Error('Solver failed.');
-                const result = await response.json();
+                if (!response.ok) throw new Error('Failed to start solver.');
+                const { task_id } = await response.json();
 
+                // 2. Polling Loop
+                text.innerText = "Optimizing (Background)...";
+                let result = null;
+                
+                while (true) {
+                    const pollResp = await fetch(`/tasks/${task_id}`);
+                    const task = await pollResp.json();
+                    
+                    if (task.status === 'completed') {
+                        result = task.result;
+                        break;
+                    } else if (task.status === 'failed' || task.status === 'error') {
+                        throw new Error(task.error || 'Solver failed in background.');
+                    }
+                    
+                    // Wait 1 second before next poll
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+
+                // 3. Render
                 routeLayers.forEach(l => map.removeLayer(l));
                 previewLayers.forEach(l => map.removeLayer(l));
                 routeLayers = [];

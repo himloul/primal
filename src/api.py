@@ -1,12 +1,14 @@
 """
 MaltaVRP Backend API
-Exposes the CVRPTW solver via FastAPI and serves the Web UI.
+Exposes the CVRPTW solver via FastAPI with Background Tasks.
 """
 
 import os
 import uvicorn
+import uuid
+import time
 from typing import List, Optional, Tuple, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -17,7 +19,11 @@ try:
 except ImportError:
     from optimization import create_data_model, solve_vrp, extract_solution, get_engine
 
-app = FastAPI(title="MaltaVRP Solver API", version="1.0")
+app = FastAPI(title="MaltaVRP Solver API", version="1.1")
+
+# --- IN-MEMORY TASK STORE ---
+# In a production app, this would be Redis or a Database.
+tasks_db: Dict[str, Dict[str, Any]] = {}
 
 # --- DATA MODELS ---
 
@@ -47,25 +53,18 @@ class SolveRequest(BaseModel):
     fleet: Fleet
     users: List[UserRequest]
 
-# --- API ENDPOINTS ---
+# --- BACKGROUND WORKER ---
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "MaltaVRP Solver"}
-
-@app.post("/solve")
-def solve_cvrptw(request: SolveRequest):
+def run_optimization_task(task_id: str, fleet_dict: dict, users_list: list):
     """
-    Solves the Vehicle Routing Problem with Time Windows.
-    Input: JSON Fleet and User Requests.
-    Output: Optimized Routes and Schedules.
+    The actual heavy lifting. Runs in a background thread.
     """
     try:
-        fleet_dict = request.fleet.dict()
-        users_dict = [u.dict() for u in request.users]
+        tasks_db[task_id]["status"] = "processing"
         
+        # 1. Map users
         mapped_users = []
-        for u in users_dict:
+        for u in users_list:
             mapped_users.append({
                 "id": u['id'],
                 "longitude_p": u['p_lon'],
@@ -78,29 +77,77 @@ def solve_cvrptw(request: SolveRequest):
                 "due_time": u['due_time']
             })
 
+        # 2. Get Engine (loads graph if first time)
         engine = get_engine()
+        
+        # 3. Solve
         data, locations = create_data_model(fleet_dict, mapped_users, engine)
         solution, routing, manager = solve_vrp(data)
         
         if not solution:
-            raise HTTPException(status_code=422, detail="No solution found.")
-            
+            tasks_db[task_id]["status"] = "failed"
+            tasks_db[task_id]["error"] = "No feasible solution found."
+            return
+
+        # 4. Extract and Save
         result = extract_solution(solution, routing, manager, locations, mapped_users)
-        return result
+        tasks_db[task_id]["result"] = result
+        tasks_db[task_id]["status"] = "completed"
+        tasks_db[task_id]["completed_at"] = time.time()
 
     except Exception as e:
         import traceback
+        tasks_db[task_id]["status"] = "error"
+        tasks_db[task_id]["error"] = str(e)
+        print(f"Task {task_id} failed:")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+
+# --- API ENDPOINTS ---
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "MaltaVRP Solver"}
+
+@app.post("/solve")
+async def solve_cvrptw(request: SolveRequest, background_tasks: BackgroundTasks):
+    """
+    Starts an optimization task in the background.
+    Returns a task_id for polling.
+    """
+    task_id = str(uuid.uuid4())
+    tasks_db[task_id] = {
+        "status": "queued",
+        "created_at": time.time(),
+        "result": None
+    }
+    
+    # Run the CPU-intensive task in the background
+    background_tasks.add_task(
+        run_optimization_task, 
+        task_id, 
+        request.fleet.dict(), 
+        [u.dict() for u in request.users]
+    )
+    
+    return {"task_id": task_id, "status": "queued"}
+
+@app.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """
+    Poll this endpoint to check if the solver is finished.
+    """
+    task = tasks_db.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return task
 
 # --- STATIC FILES & UI ---
 
-# Serve the static folder
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 def read_index():
-    """Serves the main UI page."""
     return FileResponse('static/index.html')
 
 if __name__ == "__main__":

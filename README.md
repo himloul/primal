@@ -10,7 +10,7 @@ The system is split into three main parts:
 
 1. [Optimization](src/optimization.py): We use OR-Tools' Constraint Programming solver. The problem is modeled as a Pickup & Delivery problem where every request is a pair of nodes $(i, j)$ that must be served by the same vehicle, with $i$ visited before $j$. We enforce capacity constraints and hard time windows using a cumulative Time dimension.
 1. [Routing Engine](src/routing.py): Instead of using straight-line "as-the-crow-flies" distances, we download the Marrakech road graph via `osmnx`. We calculate the $N \times N$ cost matrix by running Single-Source Dijkstra $N$ times. For visualization, we trace the actual path through the graph nodes to get the real road geometry.
-2. **Interface:** A lightweight FastAPI backend that exposes a `/solve` endpoint and serves a minimalist, shadcn-inspired dashboard. No React/Next.js bloat—just vanilla JS and Leaflet.js.
+3.  **Interface:** A lightweight FastAPI backend that exposes an asynchronous `/solve` endpoint. We decouple the solver from the HTTP lifecycle using FastAPI `BackgroundTasks`, allowing the UI to poll for results without blocking. No React/Next.js bloat—just vanilla JS and Leaflet.
 
 ## Details
 
