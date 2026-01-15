@@ -1,4 +1,27 @@
+# Environment
+.venv/
 env/
-cache/
-**/__pycache__
+.env
+
+# Caches
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data
 data/*.graphml
+data/*.json
+!data/fleet.json
+
+# Local artifacts
+out.json
+*.log
+benchmark_results.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# draft
+docs/

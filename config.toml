@@ -1,0 +1,14 @@
+[server]
+host = "0.0.0.0"
+port = 8000
+workers = 1
+
+[data]
+place_name = "Marrakech, Morocco"
+
+[solver]
+time_limit_seconds = 30
+use_guided_local_search = true
+# Default service time if not specified by user (seconds)
+default_service_time = 120
+use_heuristic_solver = false

@@ -1,42 +1,62 @@
 """
-MaltaVRP Backend API
-Exposes the CVRPTW solver via FastAPI with Background Tasks.
+CVRP Backend API
+A thin wrapper around the Solver Service.
 """
 
-import os
-import uvicorn
 import uuid
 import time
-from typing import List, Optional, Tuple, Dict, Any
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
+from typing import List, Tuple, Dict, Any
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-# Import optimization logic
-try:
-    from .optimization import create_data_model, solve_vrp, extract_solution, get_engine
-except ImportError:
-    from optimization import create_data_model, solve_vrp, extract_solution, get_engine
+from .optimization import solve_cpdptw
+from .routing import RoutingEngine
 
-app = FastAPI(title="MaltaVRP Solver API", version="1.1")
-
-# --- IN-MEMORY TASK STORE ---
-# In a production app, this would be Redis or a Database.
+# In-memory store for background tasks
 tasks_db: Dict[str, Dict[str, Any]] = {}
+app_state = {}
 
-# --- DATA MODELS ---
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize the Routing Engine once on startup
+    print("Initializing Routing Engine...")
+    app_state["engine"] = RoutingEngine()
+
+    # Initialize Process Pool for CPU-bound tasks
+    # limit workers to prevent memory exhaustion
+    app_state["executor"] = ProcessPoolExecutor(max_workers=2)
+
+    yield
+
+    print("Shutting down...")
+    app_state["executor"].shutdown()
+
+
+app = FastAPI(title="CVRP API", version="1.2", lifespan=lifespan)
+
+
+# --- SCHEMAS ---
+
 
 class Vehicle(BaseModel):
     id: str
     capacity: int
 
+
 class Depot(BaseModel):
-    location: Tuple[float, float] # [Lon, Lat]
+    location: Tuple[float, float]
+
 
 class Fleet(BaseModel):
     depot: Depot
     taxis: List[Vehicle]
+
 
 class UserRequest(BaseModel):
     id: str
@@ -49,106 +69,86 @@ class UserRequest(BaseModel):
     ready_time: int = 0
     due_time: int = 86400
 
+
 class SolveRequest(BaseModel):
     fleet: Fleet
     users: List[UserRequest]
+    use_heuristic: bool = False
 
-# --- BACKGROUND WORKER ---
 
-def run_optimization_task(task_id: str, fleet_dict: dict, users_list: list):
-    """
-    The actual heavy lifting. Runs in a background thread.
-    """
+# --- BACKGROUND TASK ---
+
+
+async def solve_background_task(
+    task_id: str,
+    fleet: dict,
+    users: list,
+    engine: RoutingEngine,
+    executor: ProcessPoolExecutor,
+    use_heuristic: bool,
+):
     try:
         tasks_db[task_id]["status"] = "processing"
-        
-        # 1. Map users
-        mapped_users = []
-        for u in users_list:
-            mapped_users.append({
-                "id": u['id'],
-                "longitude_p": u['p_lon'],
-                "latitude_p": u['p_lat'],
-                "longitude_d": u['d_lon'],
-                "latitude_d": u['d_lat'],
-                "number_people": u['passengers'],
-                "service_time": u['service_time'],
-                "ready_time": u['ready_time'],
-                "due_time": u['due_time']
-            })
 
-        # 2. Get Engine (loads graph if first time)
-        engine = get_engine()
-        
-        # 3. Solve
-        data, locations = create_data_model(fleet_dict, mapped_users, engine)
-        solution, routing, manager = solve_vrp(data)
-        
-        if not solution:
+        # Construct config override
+        solver_config = {"use_heuristic_solver": use_heuristic}
+
+        # Offload the heavy CPU blocking function to a separate process
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            executor, solve_cpdptw, fleet, users, engine, solver_config
+        )
+
+        if result.get("status") == "failed":
             tasks_db[task_id]["status"] = "failed"
-            tasks_db[task_id]["error"] = "No feasible solution found."
-            return
-
-        # 4. Extract and Save
-        result = extract_solution(solution, routing, manager, locations, mapped_users)
-        tasks_db[task_id]["result"] = result
-        tasks_db[task_id]["status"] = "completed"
-        tasks_db[task_id]["completed_at"] = time.time()
-
+            tasks_db[task_id]["error"] = result.get("error")
+        else:
+            tasks_db[task_id]["result"] = result
+            tasks_db[task_id]["status"] = "completed"
+            tasks_db[task_id]["completed_at"] = time.time()
     except Exception as e:
-        import traceback
         tasks_db[task_id]["status"] = "error"
         tasks_db[task_id]["error"] = str(e)
-        print(f"Task {task_id} failed:")
-        traceback.print_exc()
 
-# --- API ENDPOINTS ---
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "MaltaVRP Solver"}
+# --- ENDPOINTS ---
+
 
 @app.post("/solve")
-async def solve_cvrptw(request: SolveRequest, background_tasks: BackgroundTasks):
-    """
-    Starts an optimization task in the background.
-    Returns a task_id for polling.
-    """
+async def solve(request: SolveRequest, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
-    tasks_db[task_id] = {
-        "status": "queued",
-        "created_at": time.time(),
-        "result": None
-    }
-    
-    # Run the CPU-intensive task in the background
+    tasks_db[task_id] = {"status": "queued", "created_at": time.time(), "result": None}
+
+    # Pass the shared engine and executor to the background task
     background_tasks.add_task(
-        run_optimization_task, 
-        task_id, 
-        request.fleet.dict(), 
-        [u.dict() for u in request.users]
+        solve_background_task,
+        task_id,
+        request.fleet.model_dump(),
+        [u.model_dump() for u in request.users],
+        app_state["engine"],
+        app_state["executor"],
+        request.use_heuristic,
     )
-    
-    return {"task_id": task_id, "status": "queued"}
+    return {"task_id": task_id}
+
 
 @app.get("/tasks/{task_id}")
-async def get_task_status(task_id: str):
-    """
-    Poll this endpoint to check if the solver is finished.
-    """
+async def get_task(task_id: str):
     task = tasks_db.get(task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
+        raise HTTPException(status_code=404)
     return task
 
-# --- STATIC FILES & UI ---
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+# --- UI ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/")
-def read_index():
-    return FileResponse('static/index.html')
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/")
+def index():
+    return FileResponse("static/index.html")
